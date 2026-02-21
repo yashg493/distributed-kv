@@ -8,14 +8,13 @@ A distributed, fault-tolerant key-value store built from scratch in C++17.
 - O(1) average time complexity for get/put/delete
 - Concurrent read access support
 
-## Roadmap
 
-- [x] Phase 1.1: In-memory thread-safe KV store
-- [ ] Phase 1.2: Write-Ahead Log (WAL)
-- [ ] Phase 1.3: LSM Tree storage engine
-- [ ] Phase 2: Networking (TCP/gRPC)
-- [ ] Phase 3: Raft consensus
-- [ ] Phase 4: Sharding
+- In-memory thread-safe KV store
+- Write-Ahead Log (WAL)
+- LSM Tree storage engine
+- Networking (TCP/gRPC)
+- Raft consensus
+- Sharding
 
 ## Build
 
