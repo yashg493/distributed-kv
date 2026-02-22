@@ -7,14 +7,16 @@ A distributed, fault-tolerant key-value store built from scratch in C++17.
 - Thread-safe in-memory storage with reader-writer locks
 - O(1) average time complexity for get/put/delete
 - Concurrent read access support
+- Write-Ahead Log (WAL) for crash recovery
 
+## Roadmap
 
-- In-memory thread-safe KV store
-- Write-Ahead Log (WAL)
-- LSM Tree storage engine
-- Networking (TCP/gRPC)
-- Raft consensus
-- Sharding
+In-memory thread-safe KV store
+Write-Ahead Log (WAL)
+LSM Tree storage engine
+Networking (TCP/gRPC)
+Raft consensus
+Sharding
 
 ## Build
 
@@ -32,18 +34,25 @@ cmake --build .
 
 ## API
 
+### In-Memory Store
 ```cpp
 #include "storage/kv_store.hpp"
 
 dkv::KVStore store;
+store.put("key", "value");
+auto val = store.get("key");
+store.del("key");
+```
 
-store.put("key", "value");       // returns true if inserted, false if updated
-auto val = store.get("key");     // returns std::optional<std::string>
-store.del("key");                // returns true if deleted
-store.contains("key");           // returns bool
-store.size();                    // returns size_t
-store.keys();                    // returns std::vector<std::string>
-store.clear();                   // clears all data
+### Persistent Store (with WAL)
+```cpp
+#include "storage/persistent_kv_store.hpp"
+
+dkv::PersistentKVStore store("./data");
+store.put("key", "value");    // logged to WAL before memory update
+auto val = store.get("key");
+store.del("key");
+store.checkpoint();           // truncate WAL
 ```
 
 ## Project Structure
@@ -51,14 +60,15 @@ store.clear();                   // clears all data
 ```
 distributed-kv/
 ├── CMakeLists.txt
-├── include/
-│   └── storage/
-│       └── kv_store.hpp
-├── src/
-│   ├── storage/
-│   │   └── kv_store.cpp
-│   └── main.cpp
-└── tests/
+├── include/storage/
+│   ├── kv_store.hpp
+│   ├── wal.hpp
+│   └── persistent_kv_store.hpp
+├── src/storage/
+│   ├── kv_store.cpp
+│   ├── wal.cpp
+│   └── persistent_kv_store.cpp
+└── src/main.cpp
 ```
 
 ## License

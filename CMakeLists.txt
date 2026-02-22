@@ -9,6 +9,8 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 
 add_library(kvstore
     src/storage/kv_store.cpp
+    src/storage/wal.cpp
+    src/storage/persistent_kv_store.cpp
 )
 
 add_executable(kv_test src/main.cpp)

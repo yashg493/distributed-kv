@@ -4,9 +4,13 @@
 #include <cassert>
 #include <chrono>
 #include <atomic>
+#include <filesystem>
 #include "storage/kv_store.hpp"
+#include "storage/persistent_kv_store.hpp"
 
 using namespace dkv;
+
+const std::string TEST_DATA_DIR = "./test_data";
 
 void test_basic_operations() {
     std::cout << "[TEST] Basic Operations\n";
@@ -139,13 +143,131 @@ void test_mixed_workload() {
     std::cout << "[PASS] Mixed Workload\n\n";
 }
 
+void cleanup_test_dir() {
+    std::filesystem::remove_all(TEST_DATA_DIR);
+}
+
+void test_persistence_basic() {
+    std::cout << "[TEST] Persistence Basic\n";
+    cleanup_test_dir();
+
+    {
+        PersistentKVStore store(TEST_DATA_DIR);
+        store.put("name", "Yash");
+        store.put("city", "Delhi");
+        store.put("lang", "C++");
+        store.del("city");
+    }
+
+    {
+        PersistentKVStore store(TEST_DATA_DIR);
+        assert(store.size() == 2);
+        assert(store.get("name").value() == "Yash");
+        assert(store.get("lang").value() == "C++");
+        assert(!store.get("city").has_value());
+    }
+
+    cleanup_test_dir();
+    std::cout << "[PASS] Persistence Basic\n\n";
+}
+
+void test_persistence_recovery() {
+    std::cout << "[TEST] Persistence Recovery (simulated crash)\n";
+    cleanup_test_dir();
+
+    {
+        PersistentKVStore store(TEST_DATA_DIR);
+        for (int i = 0; i < 100; i++) {
+            store.put("key" + std::to_string(i), "value" + std::to_string(i));
+        }
+        for (int i = 0; i < 50; i += 2) {
+            store.del("key" + std::to_string(i));
+        }
+    }
+
+    {
+        PersistentKVStore store(TEST_DATA_DIR);
+        assert(store.size() == 75);
+        assert(!store.get("key0").has_value());
+        assert(store.get("key1").value() == "value1");
+        assert(!store.get("key48").has_value());
+        assert(store.get("key99").value() == "value99");
+    }
+
+    cleanup_test_dir();
+    std::cout << "[PASS] Persistence Recovery\n\n";
+}
+
+void test_persistence_checkpoint() {
+    std::cout << "[TEST] Persistence Checkpoint\n";
+    cleanup_test_dir();
+
+    {
+        PersistentKVStore store(TEST_DATA_DIR);
+        for (int i = 0; i < 1000; i++) {
+            store.put("key" + std::to_string(i), "value" + std::to_string(i));
+        }
+        store.clear();
+        store.put("after", "checkpoint");
+    }
+
+    {
+        PersistentKVStore store(TEST_DATA_DIR);
+        assert(store.size() == 1);
+        assert(store.get("after").value() == "checkpoint");
+    }
+
+    cleanup_test_dir();
+    std::cout << "[PASS] Persistence Checkpoint\n\n";
+}
+
+void test_persistence_performance() {
+    std::cout << "[TEST] Persistence Performance\n";
+    cleanup_test_dir();
+
+    constexpr int NUM_OPS = 10000;
+
+    auto start = std::chrono::high_resolution_clock::now();
+    {
+        PersistentKVStore store(TEST_DATA_DIR);
+        for (int i = 0; i < NUM_OPS; i++) {
+            store.put("key" + std::to_string(i), "value" + std::to_string(i));
+        }
+    }
+    auto write_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::high_resolution_clock::now() - start
+    );
+
+    start = std::chrono::high_resolution_clock::now();
+    {
+        PersistentKVStore store(TEST_DATA_DIR);
+        assert(store.size() == NUM_OPS);
+    }
+    auto recover_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::high_resolution_clock::now() - start
+    );
+
+    std::cout << "  " << NUM_OPS << " writes in " << write_duration.count() << "ms\n";
+    std::cout << "  Recovery in " << recover_duration.count() << "ms\n";
+
+    cleanup_test_dir();
+    std::cout << "[PASS] Persistence Performance\n\n";
+}
+
 int main() {
     std::cout << "\n=== Distributed KV Store Tests ===\n\n";
 
+    std::cout << "--- Phase 1.1: In-Memory Store ---\n\n";
     test_basic_operations();
     test_concurrent_reads();
     test_concurrent_writes();
     test_mixed_workload();
+
+    std::cout << "--- Phase 1.2: Persistence (WAL) ---\n\n";
+    test_persistence_basic();
+    test_persistence_recovery();
+    test_persistence_checkpoint();
+    test_persistence_performance();
 
     std::cout << "=== All tests passed ===\n\n";
     return 0;
