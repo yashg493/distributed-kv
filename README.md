@@ -6,17 +6,17 @@ A distributed, fault-tolerant key-value store built from scratch in C++17.
 
 - Thread-safe in-memory storage with reader-writer locks
 - O(1) average time complexity for get/put/delete
-- Concurrent read access support
 - Write-Ahead Log (WAL) for crash recovery
+- LSM Tree for datasets larger than memory
 
 ## Roadmap
 
-In-memory thread-safe KV store
-Write-Ahead Log (WAL)
-LSM Tree storage engine
-Networking (TCP/gRPC)
-Raft consensus
-Sharding
+- 1.1: In-memory thread-safe KV store
+- 1.2: Write-Ahead Log (WAL)
+- 1.3: LSM Tree storage engine
+- 2: Networking (TCP/gRPC)
+- 3: Raft consensus
+- 4: Sharding
 
 ## Build
 
@@ -49,10 +49,22 @@ store.del("key");
 #include "storage/persistent_kv_store.hpp"
 
 dkv::PersistentKVStore store("./data");
-store.put("key", "value");    // logged to WAL before memory update
+store.put("key", "value");
 auto val = store.get("key");
-store.del("key");
-store.checkpoint();           // truncate WAL
+store.checkpoint();
+```
+
+### LSM Tree (handles large datasets)
+```cpp
+#include "storage/lsm_tree.hpp"
+
+dkv::LSMConfig config;
+config.memtable_size_limit = 4 * 1024 * 1024;  // 4MB
+dkv::LSMTree lsm("./data", config);
+
+lsm.put("key", "value");  // writes to memtable + WAL
+auto val = lsm.get("key");  // checks memtable, then SSTables
+lsm.flush();  // force flush memtable to SSTable
 ```
 
 ## Project Structure
@@ -63,11 +75,15 @@ distributed-kv/
 ├── include/storage/
 │   ├── kv_store.hpp
 │   ├── wal.hpp
-│   └── persistent_kv_store.hpp
+│   ├── memtable.hpp
+│   ├── sstable.hpp
+│   └── lsm_tree.hpp
 ├── src/storage/
 │   ├── kv_store.cpp
 │   ├── wal.cpp
-│   └── persistent_kv_store.cpp
+│   ├── memtable.cpp
+│   ├── sstable.cpp
+│   └── lsm_tree.cpp
 └── src/main.cpp
 ```
 
