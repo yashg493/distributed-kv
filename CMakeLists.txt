@@ -11,6 +11,9 @@ add_library(kvstore
     src/storage/kv_store.cpp
     src/storage/wal.cpp
     src/storage/persistent_kv_store.cpp
+    src/storage/memtable.cpp
+    src/storage/sstable.cpp
+    src/storage/lsm_tree.cpp
 )
 
 add_executable(kv_test src/main.cpp)
