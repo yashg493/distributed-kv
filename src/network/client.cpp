@@ -84,6 +84,16 @@ bool Client::ping() {
     return resp.status == StatusCode::STATUS_OK && resp.value == "PONG";
 }
 
+std::optional<std::string> Client::status() {
+    Request req{OpCode::OP_STATUS, "", ""};
+    Response resp = sendRequest(req);
+    
+    if (resp.status == StatusCode::STATUS_OK) {
+        return resp.value;
+    }
+    return std::nullopt;
+}
+
 Response Client::sendRequest(const Request& req) {
     if (!connected_) {
         throw std::runtime_error("Not connected");

@@ -8,6 +8,7 @@ void printHelp() {
     std::cout << "  get <key>          - Retrieve a value\n";
     std::cout << "  del <key>          - Delete a key\n";
     std::cout << "  ping               - Check server connection\n";
+    std::cout << "  status             - Show server node status\n";
     std::cout << "  quit               - Exit client\n";
 }
 
@@ -106,6 +107,14 @@ int main(int argc, char* argv[]) {
             else if (cmd == "ping") {
                 if (client.ping()) {
                     std::cout << "PONG\n";
+                } else {
+                    std::cout << "ERROR\n";
+                }
+            }
+            else if (cmd == "status") {
+                auto status = client.status();
+                if (status) {
+                    std::cout << *status;
                 } else {
                     std::cout << "ERROR\n";
                 }

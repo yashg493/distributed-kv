@@ -40,6 +40,7 @@ public:
     std::optional<std::string> get(const std::string& key);
     bool del(const std::string& key);
     bool ping();
+    std::optional<std::string> status();
 
 private:
     Response sendRequest(const Request& req);
