@@ -17,6 +17,8 @@ add_library(kvstore
     src/network/protocol.cpp
     src/network/server.cpp
     src/network/client.cpp
+    src/replication/replication_log.cpp
+    src/replication/replica_node.cpp
 )
 
 if(WIN32)
