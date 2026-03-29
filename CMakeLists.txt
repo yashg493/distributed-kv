@@ -19,6 +19,8 @@ add_library(kvstore
     src/network/client.cpp
     src/replication/replication_log.cpp
     src/replication/replica_node.cpp
+    src/raft/raft_state.cpp
+    src/raft/raft_node.cpp
 )
 
 if(WIN32)
