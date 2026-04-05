@@ -1,8 +1,10 @@
 #include <iostream>
 #include <csignal>
-#include "replication/replica_node.hpp"
+#include <sstream>
+#include <algorithm>
+#include "raft/raft_node.hpp"
 
-dkv::ReplicaNode* g_node = nullptr;
+dkv::RaftNode* g_node = nullptr;
 
 void signalHandler(int signal) {
     if (g_node) {
@@ -16,20 +18,32 @@ void printUsage() {
     std::cout << "Options:\n";
     std::cout << "  -p port       Port to listen on (default: 7878)\n";
     std::cout << "  -d dir        Data directory (default: ./server_data)\n";
-    std::cout << "  --role ROLE   Node role: standalone, leader, follower (default: standalone)\n";
-    std::cout << "  --leader H:P  Leader address for follower mode (e.g., 127.0.0.1:7878)\n";
+    std::cout << "  --peers LIST  Comma-separated list of all cluster nodes (including self)\n";
+    std::cout << "                e.g., 127.0.0.1:9000,127.0.0.1:9001,127.0.0.1:9002\n";
     std::cout << "  -h, --help    Show this help\n";
     std::cout << "\nExamples:\n";
-    std::cout << "  kv_server -p 7878 --role leader\n";
-    std::cout << "  kv_server -p 7879 --role follower --leader 127.0.0.1:7878\n";
+    std::cout << "  # Start a 3-node Raft cluster:\n";
+    std::cout << "  kv_server -p 9000 -d ./data0 --peers 127.0.0.1:9000,127.0.0.1:9001,127.0.0.1:9002\n";
+    std::cout << "  kv_server -p 9001 -d ./data1 --peers 127.0.0.1:9000,127.0.0.1:9001,127.0.0.1:9002\n";
+    std::cout << "  kv_server -p 9002 -d ./data2 --peers 127.0.0.1:9000,127.0.0.1:9001,127.0.0.1:9002\n";
+}
+
+std::vector<std::string> parsePeers(const std::string& peers_str) {
+    std::vector<std::string> peers;
+    std::stringstream ss(peers_str);
+    std::string peer;
+    while (std::getline(ss, peer, ',')) {
+        if (!peer.empty()) {
+            peers.push_back(peer);
+        }
+    }
+    return peers;
 }
 
 int main(int argc, char* argv[]) {
     uint16_t port = 7878;
     std::string data_dir = "./server_data";
-    dkv::NodeRole role = dkv::NodeRole::STANDALONE;
-    std::string leader_host;
-    uint16_t leader_port = 0;
+    std::vector<std::string> peers;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -37,46 +51,23 @@ int main(int argc, char* argv[]) {
             port = static_cast<uint16_t>(std::stoi(argv[++i]));
         } else if (arg == "-d" && i + 1 < argc) {
             data_dir = argv[++i];
-        } else if (arg == "--role" && i + 1 < argc) {
-            std::string role_str = argv[++i];
-            if (role_str == "leader") {
-                role = dkv::NodeRole::LEADER;
-            } else if (role_str == "follower") {
-                role = dkv::NodeRole::FOLLOWER;
-            } else if (role_str == "standalone") {
-                role = dkv::NodeRole::STANDALONE;
-            } else {
-                std::cerr << "Unknown role: " << role_str << "\n";
-                return 1;
-            }
-        } else if (arg == "--leader" && i + 1 < argc) {
-            std::string addr = argv[++i];
-            auto colon = addr.find(':');
-            if (colon == std::string::npos) {
-                std::cerr << "Invalid leader address format. Use host:port\n";
-                return 1;
-            }
-            leader_host = addr.substr(0, colon);
-            leader_port = static_cast<uint16_t>(std::stoi(addr.substr(colon + 1)));
+        } else if (arg == "--peers" && i + 1 < argc) {
+            peers = parsePeers(argv[++i]);
         } else if (arg == "-h" || arg == "--help") {
             printUsage();
             return 0;
         }
     }
 
-    // Validate follower configuration
-    if (role == dkv::NodeRole::FOLLOWER && (leader_host.empty() || leader_port == 0)) {
-        std::cerr << "Error: Follower mode requires --leader option\n";
-        return 1;
+    // Add self to peers if not present
+    std::string self = "127.0.0.1:" + std::to_string(port);
+    if (std::find(peers.begin(), peers.end(), self) == peers.end()) {
+        peers.push_back(self);
     }
 
     try {
-        dkv::ReplicaNode node(data_dir, port, role);
+        dkv::RaftNode node(data_dir, port, peers);
         g_node = &node;
-
-        if (role == dkv::NodeRole::FOLLOWER) {
-            node.setLeaderAddress(leader_host, leader_port);
-        }
 
         std::signal(SIGINT, signalHandler);
         std::signal(SIGTERM, signalHandler);

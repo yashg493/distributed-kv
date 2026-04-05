@@ -19,6 +19,10 @@ add_library(kvstore
     src/network/client.cpp
     src/replication/replication_log.cpp
     src/replication/replica_node.cpp
+    src/raft/raft_state.cpp
+    src/raft/raft_node.cpp
+    src/shard/hash_ring.cpp
+    src/shard/sharded_client.cpp
 )
 
 if(WIN32)
@@ -33,5 +37,8 @@ target_link_libraries(kv_server kvstore)
 
 add_executable(kv_client src/client_main.cpp)
 target_link_libraries(kv_client kvstore)
+
+add_executable(kv_sharded_client src/sharded_client_main.cpp)
+target_link_libraries(kv_sharded_client kvstore)
 
 enable_testing()

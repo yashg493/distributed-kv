@@ -212,4 +212,186 @@ ReplicationEntry ReplicationEntry::deserialize(const std::vector<uint8_t>& data)
     return entry;
 }
 
+// Helper to write string (4-byte length + data)
+static void writeString(std::vector<uint8_t>& data, const std::string& str) {
+    uint32_t len = static_cast<uint32_t>(str.size());
+    data.push_back((len >> 0) & 0xFF);
+    data.push_back((len >> 8) & 0xFF);
+    data.push_back((len >> 16) & 0xFF);
+    data.push_back((len >> 24) & 0xFF);
+    data.insert(data.end(), str.begin(), str.end());
+}
+
+// Helper to read string
+static std::string readString(const std::vector<uint8_t>& data, size_t& offset) {
+    if (offset + 4 > data.size()) {
+        throw std::runtime_error("Invalid data: missing string length");
+    }
+    uint32_t len = data[offset] | (data[offset+1] << 8) | 
+                   (data[offset+2] << 16) | (data[offset+3] << 24);
+    offset += 4;
+    if (offset + len > data.size()) {
+        throw std::runtime_error("Invalid data: string length mismatch");
+    }
+    std::string str(data.begin() + offset, data.begin() + offset + len);
+    offset += len;
+    return str;
+}
+
+// ==================== RaftLogEntry ====================
+
+std::vector<uint8_t> RaftLogEntry::serialize() const {
+    std::vector<uint8_t> data;
+    writeU64(data, term);
+    writeU64(data, index);
+    data.push_back(static_cast<uint8_t>(op));
+    writeString(data, key);
+    writeString(data, value);
+    return data;
+}
+
+RaftLogEntry RaftLogEntry::deserialize(const std::vector<uint8_t>& data) {
+    RaftLogEntry entry;
+    size_t offset = 0;
+    
+    entry.term = readU64(data, offset);
+    offset += 8;
+    entry.index = readU64(data, offset);
+    offset += 8;
+    entry.op = static_cast<OpCode>(data[offset++]);
+    entry.key = readString(data, offset);
+    entry.value = readString(data, offset);
+    
+    return entry;
+}
+
+// ==================== RequestVote ====================
+
+std::vector<uint8_t> RequestVote::serialize() const {
+    std::vector<uint8_t> data;
+    writeU64(data, term);
+    writeString(data, candidate_id);
+    writeU64(data, last_log_index);
+    writeU64(data, last_log_term);
+    return data;
+}
+
+RequestVote RequestVote::deserialize(const std::vector<uint8_t>& data) {
+    RequestVote rv;
+    size_t offset = 0;
+    
+    rv.term = readU64(data, offset);
+    offset += 8;
+    rv.candidate_id = readString(data, offset);
+    rv.last_log_index = readU64(data, offset);
+    offset += 8;
+    rv.last_log_term = readU64(data, offset);
+    
+    return rv;
+}
+
+// ==================== RequestVoteResponse ====================
+
+std::vector<uint8_t> RequestVoteResponse::serialize() const {
+    std::vector<uint8_t> data;
+    writeU64(data, term);
+    data.push_back(vote_granted ? 1 : 0);
+    return data;
+}
+
+RequestVoteResponse RequestVoteResponse::deserialize(const std::vector<uint8_t>& data) {
+    RequestVoteResponse rvr;
+    size_t offset = 0;
+    
+    rvr.term = readU64(data, offset);
+    offset += 8;
+    rvr.vote_granted = (data[offset] != 0);
+    
+    return rvr;
+}
+
+// ==================== AppendEntries ====================
+
+std::vector<uint8_t> AppendEntries::serialize() const {
+    std::vector<uint8_t> data;
+    writeU64(data, term);
+    writeString(data, leader_id);
+    writeU64(data, prev_log_index);
+    writeU64(data, prev_log_term);
+    
+    // Entries count
+    uint32_t count = static_cast<uint32_t>(entries.size());
+    data.push_back((count >> 0) & 0xFF);
+    data.push_back((count >> 8) & 0xFF);
+    data.push_back((count >> 16) & 0xFF);
+    data.push_back((count >> 24) & 0xFF);
+    
+    // Each entry (length-prefixed)
+    for (const auto& entry : entries) {
+        auto entry_data = entry.serialize();
+        uint32_t entry_len = static_cast<uint32_t>(entry_data.size());
+        data.push_back((entry_len >> 0) & 0xFF);
+        data.push_back((entry_len >> 8) & 0xFF);
+        data.push_back((entry_len >> 16) & 0xFF);
+        data.push_back((entry_len >> 24) & 0xFF);
+        data.insert(data.end(), entry_data.begin(), entry_data.end());
+    }
+    
+    writeU64(data, leader_commit);
+    return data;
+}
+
+AppendEntries AppendEntries::deserialize(const std::vector<uint8_t>& data) {
+    AppendEntries ae;
+    size_t offset = 0;
+    
+    ae.term = readU64(data, offset);
+    offset += 8;
+    ae.leader_id = readString(data, offset);
+    ae.prev_log_index = readU64(data, offset);
+    offset += 8;
+    ae.prev_log_term = readU64(data, offset);
+    offset += 8;
+    
+    // Entries count
+    uint32_t count = data[offset] | (data[offset+1] << 8) | 
+                     (data[offset+2] << 16) | (data[offset+3] << 24);
+    offset += 4;
+    
+    // Each entry
+    for (uint32_t i = 0; i < count; ++i) {
+        uint32_t entry_len = data[offset] | (data[offset+1] << 8) | 
+                             (data[offset+2] << 16) | (data[offset+3] << 24);
+        offset += 4;
+        std::vector<uint8_t> entry_data(data.begin() + offset, data.begin() + offset + entry_len);
+        ae.entries.push_back(RaftLogEntry::deserialize(entry_data));
+        offset += entry_len;
+    }
+    
+    ae.leader_commit = readU64(data, offset);
+    return ae;
+}
+
+// ==================== AppendEntriesResponse ====================
+
+std::vector<uint8_t> AppendEntriesResponse::serialize() const {
+    std::vector<uint8_t> data;
+    writeU64(data, term);
+    data.push_back(success ? 1 : 0);
+    writeU64(data, match_index);
+    return data;
+}
+
+AppendEntriesResponse AppendEntriesResponse::deserialize(const std::vector<uint8_t>& data) {
+    AppendEntriesResponse aer;
+    size_t offset = 0;
+    
+    aer.term = readU64(data, offset);
+    offset += 8;
+    aer.success = (data[offset++] != 0);
+    aer.match_index = readU64(data, offset);
+    
+    return aer;
+}
+
 } // namespace dkv
